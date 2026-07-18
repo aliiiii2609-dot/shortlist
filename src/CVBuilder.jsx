@@ -1233,6 +1233,257 @@ const LOGO_CSS = `
 @keyframes slRule{ 0%{width:0;} 100%{width:var(--rulew);} }
 `;
 
+/* ── The CV itself: header + every section, in template accent/fonts.
+     Like LOGO_CSS, this component was referenced everywhere but never
+     defined anywhere in the file this app shipped with \u2014 not something
+     that broke during today's edits, but missing from square one. This is
+     a from-scratch, good-faith rebuild covering every content section and
+     the systems that depend on its DOM (margin/table drag handles, print
+     export, live inline editing) faithfully. It intentionally keeps a
+     single clean structural treatment across templates (driven by each
+     template's own accent/font/padding tokens) rather than guessing at
+     three distinct pixel-for-pixel layouts with no reference to check
+     against; some of DEFAULT_DESIGN's more decorative knobs (photo/logo
+     image, QR block, the "spikes" strip's exact styling, sidebar floats)
+     are not wired up yet and are safe, inert no-ops rather than crashes. */
+const SECTION_LABEL = {
+  education:"Education", achievements:"Achievements", experience:"Experience",
+  positions:"Positions of Responsibility", extracurricular:"Extra-Curricular",
+  competitions:"Competitions", skills:"Skills", certifications:"Certifications",
+};
+
+function CVPage({ version, live, onEdit }) {
+  const tpl = TPLS[version.template] || TPLS.regal;
+  const D = version.design || DEFAULT_DESIGN;
+  const L = version.layout || defaultLayout();
+  const data = D.anonymous ? ANON_DATA(version.data) : version.data;
+  const p = data.personal || {};
+  const show = D.show || DEFAULT_DESIGN.show;
+  const FB = D.fontBody === "auto" || !D.fontBody ? tpl.fontBody : (FONT_STACKS[D.fontBody] || tpl.fontBody);
+  const FH = D.fontHead === "auto" || !D.fontHead ? tpl.fontHead : (FONT_STACKS[D.fontHead] || tpl.fontHead);
+  const pagePad = D.mmOn
+    ? `${(D.mmT * PX_MM).toFixed(1)}px ${(D.mmR * PX_MM).toFixed(1)}px ${(D.mmB * PX_MM).toFixed(1)}px ${(D.mmL * PX_MM).toFixed(1)}px`
+    : `${Math.round(tpl.pad[0] * (D.mT ?? 1))}px ${Math.round(tpl.pad[1] * (D.mR ?? 1))}px ${Math.round(tpl.pad[0] * (D.mB ?? 1))}px ${Math.round(tpl.pad[1] * (D.mL ?? 1))}px`;
+  const accent = (D.accent && D.accent !== "auto") ? D.accent : tpl.accent;
+  const sc = D.scale || 1;
+  const sName = (D.sizeName || 1) * sc, sHead = (D.sizeHead || 1) * sc, sBody = (D.sizeBody || 1) * sc, sMeta = (D.sizeMeta || 1) * sc;
+  const secGapPx = 22 * (D.secGap || 1), entryGapPx = 13 * (D.entryGap || 1), bltGapPx = 4 * (D.bltGap || 1);
+
+  /* live inline editing: a plain, dependency-free contentEditable span that
+     reports its final text to the same onEdit(id, field, value) contract
+     the rest of the app already uses \u2014 no re-render fighting the caret,
+     since React only re-renders this subtree when `version` itself changes. */
+  const Edit = ({ id, field, value, tag: Tag = "span", style, placeholder }) => {
+    if (!live || !onEdit) return <Tag style={style}>{value || placeholder || ""}</Tag>;
+    return (
+      <Tag
+        style={{ ...style, outline: "none", cursor: "text", minWidth: 4 }}
+        contentEditable suppressContentEditableWarning
+        onBlur={e => { const v = e.currentTarget.innerText; if (v !== (value || "")) onEdit(id, field, v); }}
+        onKeyDown={e => { if (e.key === "Enter" && Tag !== "div") e.preventDefault(); }}
+      >{value || ""}</Tag>
+    );
+  };
+
+  const H2 = ({ children }) => (
+    <div style={{ fontFamily:FH, fontSize:13.5 * sHead, fontWeight:700, color:accent, letterSpacing:0.4,
+      textTransform: D.headCase === "upper" || D.headCase === "auto" ? "uppercase" : "none",
+      borderBottom:`1.5px solid ${accent}`, paddingBottom:4, marginBottom:10 }}>{children}</div>
+  );
+  const Bullets = ({ items, sec, pid }) => (
+    <ul style={{ margin:`4px 0 0`, paddingLeft:16, listStyle:"disc" }}>
+      {(items || []).filter(b => live || (b.text || "").trim()).map(b => (
+        <li key={b.id} style={{ marginBottom:bltGapPx }}>
+          <Edit id={b.id} field="text" value={b.text} placeholder={live ? "New bullet\u2026" : ""} />
+        </li>
+      ))}
+    </ul>
+  );
+  const GroupList = ({ groups, sec }) => (
+    <>
+      {(groups || []).map(g => (
+        <div key={g.id} style={{ marginBottom:entryGapPx }}>
+          {g.category ? <div style={{ fontFamily:FH, fontWeight:600, fontSize:11.5 * sBody, color:"#3a3a3a", marginBottom:3 }}>
+            <Edit id={g.id} field="category" value={g.category} tag="span" /></div> : null}
+          <ul style={{ margin:0, paddingLeft:16, listStyle:"disc" }}>
+            {(g.items || []).filter(i => live || (i.text || "").trim()).map(i => (
+              <li key={i.id} style={{ marginBottom:bltGapPx, display:"flex", justifyContent:"space-between", gap:8 }}>
+                <Edit id={i.id} field="text" value={i.text} placeholder={live ? "New item\u2026" : ""} />
+                {(i.year || live) && <Edit id={i.id} field="year" value={i.year} tag="span" style={{ color:"#8a8a8a", fontSize:10.5 * sMeta, flexShrink:0 }} placeholder="Year" />}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </>
+  );
+
+  const renderSection = key => {
+    const meta = (L.meta || {})[key] || {};
+    if (meta.visible === false) return null;
+    if (BUILTINS.includes(key)) {
+      const title = meta.title || SECTION_LABEL[key] || key;
+      const body =
+        key === "education" ? (
+          <table data-tbl="education" style={{ width:"100%", borderCollapse:"collapse", fontSize:11.5 * sBody }}>
+            <tbody>
+              {(data.education || []).map(e => (
+                <tr key={e.id} data-trid={e.id}>
+                  <td style={{ padding:"3px 0", verticalAlign:"top" }}>
+                    <Edit id={e.id} field="degree" value={e.degree} tag="span" style={{ fontWeight:600 }} placeholder="Degree" />
+                    {" \u2014 "}
+                    <Edit id={e.id} field="institution" value={e.institution} tag="span" placeholder="Institution" />
+                    {(e.board || live) && <span style={{ color:"#8a8a8a" }}> ({e.board || (live ? "Board" : "")})</span>}
+                  </td>
+                  <td style={{ padding:"3px 0", textAlign:"right", whiteSpace:"nowrap", verticalAlign:"top", color:"#5A5650" }}>
+                    <Edit id={e.id} field="score" value={e.score} tag="span" placeholder="Score" />{" "}
+                    <Edit id={e.id} field="year" value={e.year} tag="span" placeholder="Year" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : key === "achievements" || key === "extracurricular" ? (
+          <GroupList groups={key === "achievements" ? data.achievements : data.extraCurricular} sec={key} />
+        ) : key === "experience" ? (
+          (data.experience || []).map(x => (
+            <div key={x.id} style={{ marginBottom:entryGapPx }}>
+              <div style={{ display:"flex", justifyContent:"space-between", gap:8, fontSize:12 * sBody }}>
+                <span>
+                  <Edit id={x.id} field="role" value={x.role} tag="span" style={{ fontWeight:700 }} placeholder="Role" />
+                  {" \u2013 "}
+                  <Edit id={x.id} field="company" value={x.company} tag="span" placeholder="Company" />
+                </span>
+                <Edit id={x.id} field="duration" value={x.duration} tag="span" style={{ color:"#8a8a8a", fontSize:10.5 * sMeta, whiteSpace:"nowrap" }} placeholder="Duration" />
+              </div>
+              {(x.tag || live) && <div style={{ fontSize:10 * sMeta, color:accent, marginTop:1 }}><Edit id={x.id} field="tag" value={x.tag} tag="span" placeholder="Focus tag" /></div>}
+              <Bullets items={x.bullets} sec="experience" pid={x.id} />
+            </div>
+          ))
+        ) : key === "positions" ? (
+          (data.positions || []).map(x => (
+            <div key={x.id} style={{ marginBottom:entryGapPx }}>
+              <div style={{ display:"flex", justifyContent:"space-between", gap:8, fontSize:12 * sBody }}>
+                <span>
+                  <Edit id={x.id} field="role" value={x.role} tag="span" style={{ fontWeight:700 }} placeholder="Role" />
+                  {" \u2013 "}
+                  <Edit id={x.id} field="organization" value={x.organization} tag="span" placeholder="Organization" />
+                </span>
+                <Edit id={x.id} field="year" value={x.year} tag="span" style={{ color:"#8a8a8a", fontSize:10.5 * sMeta, whiteSpace:"nowrap" }} placeholder="Year" />
+              </div>
+              <Bullets items={x.bullets} sec="positions" pid={x.id} />
+            </div>
+          ))
+        ) : key === "competitions" ? (
+          <ul style={{ margin:0, paddingLeft:16, listStyle:"disc", fontSize:11.5 * sBody }}>
+            {(data.competitions || []).filter(c => live || c.detail || c.rank).map(c => (
+              <li key={c.id} style={{ marginBottom:bltGapPx, display:"flex", justifyContent:"space-between", gap:8 }}>
+                <span>
+                  {(c.rank || live) && <Edit id={c.id} field="rank" value={c.rank} tag="span" style={{ fontWeight:600 }} placeholder="Rank" />}
+                  {(c.rank || live) ? " \u2013 " : ""}
+                  <Edit id={c.id} field="text" value={c.detail} tag="span" placeholder="Detail" />
+                </span>
+                <Edit id={c.id} field="year" value={c.year} tag="span" style={{ color:"#8a8a8a", fontSize:10.5 * sMeta, flexShrink:0 }} placeholder="Year" />
+              </li>
+            ))}
+          </ul>
+        ) : key === "skills" ? (
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6, fontSize:11.5 * sBody }}>
+            {(data.skills || []).filter(s => live || (s.text || "").trim()).map(s => (
+              <span key={s.id} style={{ background:"#F2F0EA", borderRadius:4, padding:"3px 9px" }}>
+                <Edit id={s.id} field="text" value={s.text} tag="span" placeholder="Skill" />
+              </span>
+            ))}
+          </div>
+        ) : key === "certifications" ? (
+          <ul style={{ margin:0, paddingLeft:16, listStyle:"disc", fontSize:11.5 * sBody }}>
+            {(data.certifications || []).filter(c => live || (c.text || "").trim()).map(c => (
+              <li key={c.id} style={{ marginBottom:bltGapPx }}><Edit id={c.id} field="text" value={c.text} placeholder="Certification" /></li>
+            ))}
+          </ul>
+        ) : null;
+      return (
+        <div key={key} style={{ marginBottom:secGapPx, breakInside:"avoid" }}>
+          {!meta.hideHeading && <H2>{title}</H2>}
+          {body}
+        </div>
+      );
+    }
+    /* custom section (key starts "cx"): kind "list" or "table" */
+    const cu = (data.custom || {})[key];
+    if (!cu) return null;
+    const title = meta.title || cu.title || "Section";
+    return (
+      <div key={key} style={{ marginBottom:secGapPx, breakInside:"avoid" }}>
+        {!meta.hideHeading && <H2>{title}</H2>}
+        {cu.kind === "table" ? (
+          <table data-tbl={key} style={{ width:"100%", borderCollapse:"collapse", fontSize:11.5 * sBody }}>
+            <tbody>
+              {(cu.rows || []).map((r, ri) => (
+                <tr key={r.id} data-trid={r.id} style={{ borderBottom: cu.borders !== "none" ? "1px solid #E4E1D8" : "none" }}>
+                  {(r.cells || []).map(c => (
+                    <td key={c.id} colSpan={c.span || 1} style={{ padding:"4px 6px", fontWeight: cu.header && ri === 0 ? 700 : 400,
+                      borderRight: cu.borders === "grid" ? "1px solid #E4E1D8" : "none" }}>
+                      <Edit id={c.id} field="text" value={c.t} placeholder="\u2026" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <ul style={{ margin:0, paddingLeft:16, listStyle:"disc", fontSize:11.5 * sBody }}>
+            {(cu.items || []).filter(i => live || (i.text || "").trim()).map(i => (
+              <li key={i.id} style={{ marginBottom:bltGapPx, display:"flex", justifyContent:"space-between", gap:8 }}>
+                <Edit id={i.id} field="text" value={i.text} placeholder="New item\u2026" />
+                {(i.year || live) && <Edit id={i.id} field="year" value={i.year} tag="span" style={{ color:"#8a8a8a", fontSize:10.5 * sMeta, flexShrink:0 }} placeholder="Year" />}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  };
+
+  const contactBits = [
+    show.email !== false && (p.email || live) ? <Edit key="e" id="personal:email" field="email" value={p.email} tag="span" placeholder="email@example.com" /> : null,
+    show.phone !== false && (p.phone || live) ? <Edit key="ph" id="personal:phone" field="phone" value={p.phone} tag="span" placeholder="Phone" /> : null,
+    show.location !== false && (p.location || live) ? <Edit key="l" id="personal:location" field="location" value={p.location} tag="span" placeholder="Location" /> : null,
+    show.linkedin !== false && (p.linkedin || live) ? <Edit key="li" id="personal:linkedin" field="linkedin" value={p.linkedin} tag="span" placeholder="LinkedIn" /> : null,
+  ].filter(Boolean);
+
+  return (
+    <div id="cv-preview-content" style={{ fontFamily:FB, fontSize:11.5 * sBody, color:D.bodyColor || "#1d1c1c",
+      background:"#fff", padding:pagePad, boxSizing:"border-box", minHeight:"100%", lineHeight:D.lineHeight ? 1.4 * D.lineHeight : 1.5 }}>
+      <div style={{ marginBottom:16 }}>
+        <div style={{ fontFamily:FH, fontSize:22 * sName, fontWeight:700, color:accent, letterSpacing:(D.trackName || 0),
+          textTransform: D.nameCase === "upper" ? "uppercase" : "none" }}>
+          <Edit id="personal:name" field="name" value={p.name} placeholder="Your Name" />
+        </div>
+        {(show.headline !== false && (p.headline || live)) && (
+          <div style={{ fontSize:12.5 * sMeta, color:"#5A5650", marginTop:2 }}>
+            <Edit id="personal:headline" field="headline" value={p.headline} placeholder="Headline" />
+          </div>
+        )}
+        {contactBits.length > 0 && (
+          <div style={{ fontSize:10.5 * sMeta, color:"#5A5650", marginTop:6 }}>
+            {contactBits.map((b, i) => <React.Fragment key={i}>{i > 0 && "   \u00B7   "}{b}</React.Fragment>)}
+          </div>
+        )}
+        {show.tags !== false && (p.tags || []).length > 0 && (
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:8 }}>
+            {p.tags.map((t, i) => (
+              <span key={i} style={{ background:accent, color:"#fff", fontSize:9.5 * sMeta, fontWeight:600, borderRadius:3, padding:"2.5px 9px" }}>{t}</span>
+            ))}
+          </div>
+        )}
+        <div style={{ height:2, background:accent, opacity:.85, marginTop:12 }} />
+      </div>
+      {(L.order || BUILTINS).map(renderSection)}
+    </div>
+  );
+}
+
 function LogoAnimation({ size = 220 }) {
   const rays = useMemo(() => {
     const cols = ["#5B8DE0", "#2E6BD6", "#E6B24C", "#5B8DE0", "#F6D583", "#2E6BD6"];
