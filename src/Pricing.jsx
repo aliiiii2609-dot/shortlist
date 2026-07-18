@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { fetchMe, startCheckout } from "./lib/session.js";
+import { fetchMe, startOrderCheckout } from "./lib/session.js";
 
 /* Uses the app's existing light tokens (line 5338 of CVBuilder.jsx) so it does
    not look bolted on. Everything shown here comes from /api/me, which reads
@@ -33,25 +33,37 @@ export default function Pricing({ onClose }) {
 
   useEffect(() => { fetchMe().then(setMe); }, []);
 
-  /* Poll after returning from Razorpay. The webhook is what grants the credits,
-     and it lands a second or two after the browser gets redirected back, so a
-     single fetch on mount often shows the OLD balance and the user thinks the
-     payment failed. Poll briefly instead of trusting the redirect. */
-  useEffect(() => {
-    if (!new URLSearchParams(window.location.search).has("paid")) return;
+  /* The webhook is what grants the credits, and it lands a second or two
+     after Razorpay confirms the payment, so a single fetch right after
+     checkout often shows the OLD balance and the user thinks it failed.
+     Poll briefly instead of trusting either the redirect or the modal. Used
+     both for the old "returned from a Payment Link" path (?paid=1) and for
+     the new in-page modal path, so there is exactly one polling loop. */
+  const pollForUpgrade = () => {
     let n = 0;
     const t = setInterval(async () => {
       const m = await fetchMe();
       if (m) setMe(m);
       if (m?.plan === "pro" || ++n > 10) clearInterval(t);
     }, 1500);
-    return () => clearInterval(t);
+  };
+
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("paid")) return;
+    pollForUpgrade();
   }, []);
 
   const buy = async () => {
     setErr(""); setBusy(true);
-    try { window.location.href = await startCheckout(); }
-    catch (e) { setErr(e.message); setBusy(false); }
+    try {
+      await startOrderCheckout();
+      pollForUpgrade();
+    } catch (e) {
+      // A closed modal isn't a failure worth alarming over; anything else is.
+      if (!e.dismissed) setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (!me) return <div style={{ ...wrap, display: "grid", placeItems: "center", color: MUTE }}>Loading\u2026</div>;
