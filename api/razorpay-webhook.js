@@ -85,7 +85,10 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, unattributed: true });
   }
 
-  const plan = PLANS[notes.plan] || PLANS.pro;
+  // Fallback is for a link made by hand in the dashboard with no notes.plan
+  // set at all — sureshot, not shot, since underpaying is caught below but
+  // under-granting a paying customer is the worse failure mode.
+  const plan = PLANS[notes.plan] || PLANS.sureshot;
 
   /* Trust the amount Razorpay reports, never the amount in notes. A payment
      link's amount is fixed at creation, but partial payments exist, and this
