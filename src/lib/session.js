@@ -107,14 +107,16 @@ function loadRazorpayScript() {
    Payment Link page. Resolves once the signature is verified (see
    verify-payment.js for exactly what that does and does not prove); the
    actual credit grant still lands a moment later via the webhook, same as
-   the Payment Link flow already assumes in Pricing.jsx's polling. */
-export async function startOrderCheckout() {
+   the Payment Link flow already assumes in Pricing.jsx's polling.
+   planId is "shot" or "sureshot" — see api/_lib/plans.js. */
+export async function startOrderCheckout(planId) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error("Sign in first.");
 
   const orderRes = await fetch("/api/create-order", {
     method: "POST",
-    headers: { Authorization: `Bearer ${session.access_token}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ plan: planId }),
   });
   const order = await orderRes.json();
   if (!orderRes.ok) throw new Error(order.error || "Could not start checkout.");
@@ -128,7 +130,7 @@ export async function startOrderCheckout() {
       amount: order.amount,
       currency: order.currency,
       name: "Shortlist",
-      description: `${order.plan.name} \u2014 ${order.plan.credits} credits`,
+      description: order.plan.credits > 0 ? `${order.plan.name} \u2014 ${order.plan.credits} credits` : order.plan.name,
       prefill: { name: order.user.name, email: order.user.email },
       theme: { color: "#191713" },
       handler: async (resp) => {
