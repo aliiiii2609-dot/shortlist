@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     expires_at: a.plan_expires_at,
     expired: !!(a.plan_expires_at && new Date(a.plan_expires_at) < new Date()),
     prices: ACTION_PRICES,
-    pack: PLANS.pro,
+    packs: PLANS,   // both tiers now, so the pricing page can render both cards
     free: FREE,
     ledger: recent || [],
   });
