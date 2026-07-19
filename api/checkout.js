@@ -21,7 +21,12 @@ export default async function handler(req, res) {
   if (auth.error) return res.status(auth.error).json({ error: auth.message });
   const { user } = auth;
 
-  const plan = PLANS.pro;
+  // Same plan-selection guard as create-order.js: two tiers now, so this
+  // can no longer assume which one the button meant.
+  const planId = String((req.body && req.body.plan) || "").trim();
+  const plan = PLANS[planId];
+  if (!plan) return res.status(400).json({ error: "Unknown plan." });
+
   const key = process.env.RAZORPAY_KEY_ID;
   const secret = process.env.RAZORPAY_KEY_SECRET;
   if (!key || !secret) return res.status(500).json({ error: "Payments are not configured." });
