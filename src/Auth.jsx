@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { supabase } from "./lib/session.js";
+import { LANDING_IMG } from "./lib/landingImg.js";
 
-/* Replaces the welcome/sign-up screen around line 7726 of CVBuilder.jsx.
-   Same visual language (dark panel, cream primary button); different in that
-   it actually gates something.
+/* Replaces the welcome/sign-up screen around line 7726 of CVBuilder.jsx \u2014
+   same scenery-photo look that screen already had, reused here via
+   landingImg.js rather than redrawn from scratch, since it was already right.
+   Different in that this version actually gates something.
 
    Flow:
      signup -> Supabase emails a 6-digit code -> verify -> session
@@ -16,11 +18,20 @@ import { supabase } from "./lib/session.js";
    Without this, users get a link, no code ever arrives, and the box below
    sits there looking broken. {{ .Token }} is the 6-digit code. */
 
-const wrap = { minHeight: "100vh", display: "grid", placeItems: "center", background: "#14121C",
-               fontFamily: "'Inter',system-ui,-apple-system,sans-serif", padding: 20 };
-const card = { width: "100%", maxWidth: 380, background: "rgba(255,255,255,.05)",
+const wrap = { minHeight: "100vh", position: "relative", overflowX: "hidden", overflowY: "auto",
+               display: "flex", alignItems: "center", justifyContent: "center",
+               fontFamily: "'Inter',system-ui,-apple-system,sans-serif", padding: "24px 20px",
+               boxSizing: "border-box", background: "#0B0A16" };
+const bgImg = { position: "absolute", inset: 0, backgroundImage: `url(${LANDING_IMG})`,
+                backgroundSize: "cover", backgroundPosition: "center", transform: "scale(1.04)" };
+const bgTint = { position: "absolute", inset: 0,
+                 background: "radial-gradient(120% 90% at 50% 42%, rgba(9,8,20,.12) 0%, rgba(9,8,20,.4) 55%, rgba(9,8,20,.72) 100%)" };
+const outer = { position: "relative", width: 432, maxWidth: "94vw" };
+const card = { width: "100%", background: "rgba(255,255,255,.05)",
                border: "1px solid rgba(255,255,255,.10)", borderRadius: 16, padding: "26px 24px",
                backdropFilter: "blur(20px)" };
+const footNote = { fontSize: 10, color: "rgba(224,220,244,.58)", marginTop: 14, textAlign: "center",
+                    textShadow: "0 1px 12px rgba(0,0,0,.5)" };
 const label = { display: "block", fontSize: 9.5, color: "rgba(228,224,250,.95)", marginBottom: 5,
                 fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.4 };
 const input = { width: "100%", boxSizing: "border-box", background: "rgba(0,0,0,.28)",
@@ -133,6 +144,9 @@ export default function Auth({ onDone }) {
 
   return (
     <div style={wrap}>
+      <div aria-hidden="true" style={bgImg} />
+      <div aria-hidden="true" style={bgTint} />
+      <div style={outer}>
       <div style={card}>
         <div style={{ fontSize: 21, fontWeight: 700, color: "#F7F5EF", marginBottom: 5, letterSpacing: "-.4px" }}>
           Shortlist
@@ -201,6 +215,8 @@ export default function Auth({ onDone }) {
                     onClick={doForgot}>Forgot password</button>
           </>
         )}
+      </div>
+      <div style={footNote}>Private to you {"\u00B7"} stored in this app's secure per-account space {"\u00B7"} removable any time</div>
       </div>
     </div>
   );
